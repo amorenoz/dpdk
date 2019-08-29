@@ -617,12 +617,14 @@ virtio_read_caps(struct rte_pci_device *dev, struct virtio_hw *hw)
 			ret = rte_pci_read_config(dev,
 					&hw->notify_off_multiplier,
 					4, pos + sizeof(cap));
-			if (ret != 4)
+			if (ret != 4) {
 				PMD_INIT_LOG(DEBUG,
 					"failed to read notify_off_multiplier, ret %d",
 					ret);
-			else
+			} else {
 				hw->notify_base = get_cfg_addr(dev, &cap);
+				hw->notify_region = cap.bar;
+			}
 			break;
 		case VIRTIO_PCI_CAP_DEVICE_CFG:
 			hw->dev_cfg = get_cfg_addr(dev, &cap);
