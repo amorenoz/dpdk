@@ -707,6 +707,38 @@ virtio_vdpa_get_vfio_device_fd(int vid)
 	return list->dev->vfio_dev_fd;
 }
 
+static int
+virtio_vdpa_get_notify_area(int vid, int qid, uint64_t *offset, uint64_t *size)
+{
+	int did;
+	struct internal_list *list;
+	struct virtio_vdpa_device *dev;
+	struct vfio_region_info reg = { .argsz = sizeof(reg) };
+	int ret;
+
+	did = rte_vhost_get_vdpa_device_id(vid);
+	list = find_internal_resource_by_did(did);
+	if (list == NULL) {
+		DRV_LOG(ERR, "Invalid device id: %d", did);
+		return -1;
+	}
+
+	dev = list->dev;
+
+	reg.index = dev->hw.notify_region;
+	ret = ioctl(dev->vfio_dev_fd, VFIO_DEVICE_GET_REGION_INFO, &reg);
+	if (ret) {
+		DRV_LOG(ERR, "Get not get device region info: %s",
+				strerror(errno));
+		return -1;
+	}
+
+	*offset = dev->vqs[qid].notify_addr - dev->hw.notify_base + reg.offset;
+	*size = 0x1000;
+
+	return 0;
+}
+
 static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.get_queue_num = virtio_vdpa_get_queue_num,
 	.get_features = virtio_vdpa_get_features,
@@ -716,6 +748,7 @@ static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.set_features = virtio_vdpa_set_features,
 	.get_vfio_group_fd = virtio_vdpa_get_vfio_group_fd,
 	.get_vfio_device_fd = virtio_vdpa_get_vfio_device_fd,
+	.get_notify_area = virtio_vdpa_get_notify_area,
 };
 
 static inline int
