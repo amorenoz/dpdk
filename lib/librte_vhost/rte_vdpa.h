@@ -14,7 +14,6 @@
 #include <stdbool.h>
 
 #include <rte_pci.h>
-#include "rte_vhost.h"
 
 #define MAX_VDPA_NAME_LEN 128
 

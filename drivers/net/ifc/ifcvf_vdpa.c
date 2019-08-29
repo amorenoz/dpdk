@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/epoll.h>
+#include <linux/vhost.h>
 #include <linux/virtio_net.h>
 #include <stdbool.h>
 

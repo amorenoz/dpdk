@@ -20,11 +20,6 @@
 extern "C" {
 #endif
 
-/* These are not C++-aware. */
-#include <linux/vhost.h>
-#include <linux/virtio_ring.h>
-#include <linux/virtio_net.h>
-
 #define RTE_VHOST_USER_CLIENT		(1ULL << 0)
 #define RTE_VHOST_USER_NO_RECONNECT	(1ULL << 1)
 #define RTE_VHOST_USER_DEQUEUE_ZERO_COPY	(1ULL << 2)
@@ -70,6 +65,10 @@ extern "C" {
 
 #ifndef VHOST_USER_PROTOCOL_F_HOST_NOTIFIER
 #define VHOST_USER_PROTOCOL_F_HOST_NOTIFIER 11
+#endif
+
+#ifndef VHOST_F_LOG_ALL
+#define VHOST_F_LOG_ALL			26
 #endif
 
 /** Indicate whether protocol features negotiation is supported. */
