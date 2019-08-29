@@ -6,8 +6,9 @@ sources += files('virtio_ethdev.c',
 	'virtio_pci.c',
 	'virtio_rxtx.c',
 	'virtio_rxtx_simple.c',
+	'virtio_vdpa.c',
 	'virtqueue.c')
-deps += ['kvargs', 'bus_pci']
+deps += ['kvargs', 'bus_pci', 'vhost']
 
 if arch_subdir == 'x86'
 	sources += files('virtio_rxtx_simple_sse.c')

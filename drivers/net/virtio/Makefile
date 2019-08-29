@@ -45,4 +45,8 @@ SRCS-$(CONFIG_RTE_LIBRTE_VIRTIO_PMD) += virtio_user/virtio_user_dev.c
 SRCS-$(CONFIG_RTE_LIBRTE_VIRTIO_PMD) += virtio_user_ethdev.c
 endif
 
+ifeq ($(CONFIG_RTE_VIRTIO_VDPA),y)
+SRCS-$(CONFIG_RTE_LIBRTE_VIRTIO_PMD) += virtio_vdpa.c
+endif
+
 include $(RTE_SDK)/mk/rte.lib.mk
