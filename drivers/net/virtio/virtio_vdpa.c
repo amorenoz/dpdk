@@ -436,6 +436,33 @@ out_free_vqs:
 	return ret;
 }
 
+static void
+virtio_vdpa_stop(struct virtio_vdpa_device *dev)
+{
+	struct virtio_hw *hw = &dev->hw;
+	uint32_t i, nr_vring;
+	int vid = dev->vid;
+	struct rte_vhost_vring vr;
+	uint16_t last_used_idx, last_avail_idx;
+
+	nr_vring = rte_vhost_get_vring_num(vid);
+
+	vtpci_reset(hw);
+
+	for (i = 0; i < nr_vring; i++) {
+		rte_vhost_get_vhost_vring(vid, i, &vr);
+
+		last_used_idx = vr.used->idx;
+		last_avail_idx = vr.avail->idx;
+
+		rte_vhost_set_vring_base(vid, i, last_avail_idx,
+				last_used_idx);
+	}
+
+	rte_free(dev->vqs);
+	dev->vqs = NULL;
+}
+
 static int
 virtio_vdpa_dev_config(int vid)
 {
@@ -470,11 +497,36 @@ out_unlock:
 	return ret;
 }
 
+static int
+virtio_vdpa_dev_close(int vid)
+{
+	int did;
+	struct internal_list *list;
+	struct virtio_vdpa_device *dev;
+
+	did = rte_vhost_get_vdpa_device_id(vid);
+	list = find_internal_resource_by_did(did);
+	if (list == NULL) {
+		DRV_LOG(ERR, "Invalid device id: %d", did);
+		return -1;
+	}
+
+	dev = list->dev;
+
+	rte_spinlock_lock(&dev->lock);
+	virtio_vdpa_stop(dev);
+	virtio_vdpa_dma_map(dev, 0);
+	rte_spinlock_unlock(&dev->lock);
+
+	return 0;
+}
+
 static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.get_queue_num = virtio_vdpa_get_queue_num,
 	.get_features = virtio_vdpa_get_features,
 	.get_protocol_features = virtio_vdpa_get_protocol_features,
 	.dev_conf = virtio_vdpa_dev_config,
+	.dev_close = virtio_vdpa_dev_close,
 };
 
 static inline int
