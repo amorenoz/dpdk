@@ -107,6 +107,127 @@ find_internal_resource_by_dev(struct rte_pci_device *pdev)
 }
 
 static int
+virtio_vdpa_dma_map_ctrl_queue(struct virtio_vdpa_device *dev, int do_map,
+		uint64_t iova)
+{
+	const struct rte_memzone *mz;
+	int ret;
+
+	/*
+	 * IOVAs are processes VAs. We cannot use them as the Data and Control
+	 * paths are run in different processes, which may (does) lead to
+	 * collusions. The trick here is to fixup Ctrl path IOVAs so that they
+	 * start after the Data path ranges.
+	 */
+	if (do_map) {
+		mz = dev->cvq->cq.mz;
+		ret = rte_vfio_container_dma_map(dev->vfio_container_fd,
+				(uint64_t)(uintptr_t)mz->addr,
+				iova, mz->len);
+		if (ret < 0) {
+			DRV_LOG(ERR, "Failed to map ctrl ring (%d)", ret);
+			return ret;
+		}
+
+		dev->cvq->vq_ring_mem = iova;
+		iova += mz->len;
+
+		mz = dev->cvq->cq.virtio_net_hdr_mz;
+		ret = rte_vfio_container_dma_map(dev->vfio_container_fd,
+				(uint64_t)(uintptr_t)mz->addr,
+				iova, mz->len);
+		if (ret < 0) {
+			DRV_LOG(ERR, "Failed to map ctrl headers (%d)", ret);
+			return ret;
+		}
+
+		dev->cvq->cq.virtio_net_hdr_mem = iova;
+	} else {
+		mz = dev->cvq->cq.mz;
+		ret = rte_vfio_container_dma_unmap(dev->vfio_container_fd,
+				(uint64_t)(uintptr_t)mz->addr,
+				iova, mz->len);
+		if (ret < 0) {
+			DRV_LOG(ERR, "Failed to unmap ctrl ring (%d)", ret);
+			return ret;
+		}
+
+		dev->cvq->vq_ring_mem = 0;
+		iova += mz->len;
+
+		mz = dev->cvq->cq.virtio_net_hdr_mz;
+		ret = rte_vfio_container_dma_unmap(dev->vfio_container_fd,
+				(uint64_t)(uintptr_t)mz->addr,
+				iova, mz->len);
+		if (ret < 0) {
+			DRV_LOG(ERR, "Failed to unmap ctrl headers (%d)", ret);
+			return ret;
+		}
+
+		dev->cvq->cq.virtio_net_hdr_mem = 0;
+	}
+
+	return 0;
+}
+
+static int
+virtio_vdpa_dma_map(struct virtio_vdpa_device *dev, int do_map)
+{
+	uint32_t i;
+	int ret;
+	struct rte_vhost_memory *mem = NULL;
+	int vfio_container_fd;
+	uint64_t avail_iova = 0;
+
+	ret = rte_vhost_get_mem_table(dev->vid, &mem);
+	if (ret < 0 || !mem) {
+		DRV_LOG(ERR, "failed to get VM memory layout.");
+		return ret;
+	}
+
+	vfio_container_fd = dev->vfio_container_fd;
+
+	for (i = 0; i < mem->nregions; i++) {
+		struct rte_vhost_mem_region *reg;
+
+		reg = &mem->regions[i];
+		DRV_LOG(INFO, "%s, region %u: HVA 0x%" PRIx64 ", "
+			"GPA 0x%" PRIx64 ", size 0x%" PRIx64 ".",
+			do_map ? "DMA map" : "DMA unmap", i,
+			reg->host_user_addr, reg->guest_phys_addr, reg->size);
+
+		if (reg->guest_phys_addr + reg->size > avail_iova)
+			avail_iova = reg->guest_phys_addr + reg->size;
+
+		if (do_map) {
+			ret = rte_vfio_container_dma_map(vfio_container_fd,
+				reg->host_user_addr, reg->guest_phys_addr,
+				reg->size);
+			if (ret < 0) {
+				DRV_LOG(ERR, "DMA map failed.");
+				goto exit;
+			}
+		} else {
+			ret = rte_vfio_container_dma_unmap(vfio_container_fd,
+				reg->host_user_addr, reg->guest_phys_addr,
+				reg->size);
+			if (ret < 0) {
+				DRV_LOG(ERR, "DMA unmap failed.");
+				goto exit;
+			}
+		}
+	}
+
+	if (dev->cvq)
+		ret = virtio_vdpa_dma_map_ctrl_queue(dev, do_map, avail_iova);
+
+exit:
+	free(mem);
+
+	return ret;
+}
+
+static int
 virtio_vdpa_vfio_setup(struct virtio_vdpa_device *dev)
 {
 	struct rte_pci_device *pdev = dev->pdev;
@@ -216,10 +337,144 @@ virtio_vdpa_get_protocol_features(int did __rte_unused, uint64_t *features)
 	return 0;
 }
 
+static uint64_t
+hva_to_gpa(int vid, uint64_t hva)
+{
+	struct rte_vhost_memory *mem = NULL;
+	struct rte_vhost_mem_region *reg;
+	uint32_t i;
+	uint64_t gpa = 0;
+
+	if (rte_vhost_get_mem_table(vid, &mem) < 0)
+		goto exit;
+
+	for (i = 0; i < mem->nregions; i++) {
+		reg = &mem->regions[i];
+
+		if (hva >= reg->host_user_addr &&
+				hva < reg->host_user_addr + reg->size) {
+			gpa = hva - reg->host_user_addr + reg->guest_phys_addr;
+			break;
+		}
+	}
+
+exit:
+	if (mem)
+		free(mem);
+	return gpa;
+}
+
+static int
+virtio_vdpa_start(struct virtio_vdpa_device *dev)
+{
+	struct virtio_hw *hw = &dev->hw;
+	int i, vid, nr_vring, ret;
+	struct rte_vhost_vring vr;
+	struct virtio_pmd_ctrl ctrl;
+	int dlen[1];
+
+	vid = dev->vid;
+	nr_vring = rte_vhost_get_vring_num(vid);
+
+	if (dev->vqs)
+		rte_free(dev->vqs);
+
+	dev->vqs = rte_zmalloc("virtio_vdpa", sizeof(*dev->vqs) * nr_vring, 0);
+
+	for (i = 0; i < nr_vring; i++) {
+		struct virtqueue *vq = &dev->vqs[i];
+
+		rte_vhost_get_vhost_vring(vid, i, &vr);
+
+		vq->vq_queue_index = i;
+		vq->vq_nentries = vr.size;
+		vq->vq_ring_mem = hva_to_gpa(vid, (uint64_t)(uintptr_t)vr.desc);
+		if (vq->vq_ring_mem  == 0) {
+			DRV_LOG(ERR, "Fail to get GPA for descriptor ring.");
+			ret = -1;
+			goto out_free_vqs;
+		}
+
+		ret = VTPCI_OPS(hw)->setup_queue(hw, vq);
+		if (ret) {
+			DRV_LOG(ERR, "Fail to setup queue.");
+			goto out_free_vqs;
+		}
+	}
+
+	if (dev->cvq) {
+		ret = VTPCI_OPS(hw)->setup_queue(hw, dev->cvq);
+		if (ret) {
+			DRV_LOG(ERR, "Fail to setup ctrl queue.");
+			goto out_free_vqs;
+		}
+	}
+
+	vtpci_set_status(hw, VIRTIO_CONFIG_STATUS_DRIVER_OK);
+
+	if (!dev->cvq)
+		return 0;
+
+	ctrl.hdr.class = VIRTIO_NET_CTRL_MQ;
+	ctrl.hdr.cmd = VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET;
+	memcpy(ctrl.data, &dev->max_queue_pairs, sizeof(uint16_t));
+
+	dlen[0] = sizeof(uint16_t);
+
+	ret = virtio_send_command(hw->cvq, &ctrl, dlen, 1);
+	if (ret) {
+		DRV_LOG(ERR, "Multiqueue configured but send command "
+			  "failed, this is too late now...");
+		ret = -EINVAL;
+		goto out_free_vqs;
+	}
+
+	return 0;
+out_free_vqs:
+	rte_free(dev->vqs);
+
+	return ret;
+}
+
+static int
+virtio_vdpa_dev_config(int vid)
+{
+	int did, ret;
+	struct internal_list *list;
+	struct virtio_vdpa_device *dev;
+
+	did = rte_vhost_get_vdpa_device_id(vid);
+	list = find_internal_resource_by_did(did);
+	if (list == NULL) {
+		DRV_LOG(ERR, "Invalid device id: %d", did);
+		return -1;
+	}
+
+	dev = list->dev;
+	dev->vid = vid;
+
+	rte_spinlock_lock(&dev->lock);
+
+	ret = virtio_vdpa_dma_map(dev, 1);
+	if (ret)
+		goto out_unlock;
+
+	ret = virtio_vdpa_start(dev);
+
+	if (rte_vhost_host_notifier_ctrl(vid, true) != 0)
+		DRV_LOG(NOTICE, "vDPA (%d): software relay is used.", did);
+
+out_unlock:
+	rte_spinlock_unlock(&dev->lock);
+
+	return ret;
+}
+
 static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.get_queue_num = virtio_vdpa_get_queue_num,
 	.get_features = virtio_vdpa_get_features,
 	.get_protocol_features = virtio_vdpa_get_protocol_features,
+	.dev_conf = virtio_vdpa_dev_config,
 };
 
 static inline int
