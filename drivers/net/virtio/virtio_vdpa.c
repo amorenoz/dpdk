@@ -61,6 +61,29 @@ static struct internal_list_head internal_list =
 static pthread_mutex_t internal_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct internal_list *
+find_internal_resource_by_did(int did)
+{
+	int found = 0;
+	struct internal_list *list;
+
+	pthread_mutex_lock(&internal_list_lock);
+
+	TAILQ_FOREACH(list, &internal_list, next) {
+		if (did == list->dev->did) {
+			found = 1;
+			break;
+		}
+	}
+
+	pthread_mutex_unlock(&internal_list_lock);
+
+	if (!found)
+		return NULL;
+
+	return list;
+}
+
+static struct internal_list *
 find_internal_resource_by_dev(struct rte_pci_device *pdev)
 {
 	int found = 0;
@@ -131,7 +154,27 @@ err_container_destroy:
 	return -1;
 }
 
+static int
+virtio_vdpa_get_queue_num(int did, uint32_t *queue_num)
+{
+	struct internal_list *list;
+	struct virtio_vdpa_device *dev;
+
+	list = find_internal_resource_by_did(did);
+	if (list == NULL) {
+		DRV_LOG(ERR, "Invalid device id: %d", did);
+		return -1;
+	}
+
+	dev = list->dev;
+
+	*queue_num = dev->max_queue_pairs;
+
+	return 0;
+}
+
 static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
+	.get_queue_num = virtio_vdpa_get_queue_num,
 };
 
 static inline int
