@@ -55,6 +55,7 @@ Network Interface Controller Drivers
     thunderx
     vdev_netvsc
     virtio
+    virtio_vdpa
     vhost
     vmxnet3
     pcap_ring
