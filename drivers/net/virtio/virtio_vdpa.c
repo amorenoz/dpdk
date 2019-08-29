@@ -521,12 +521,167 @@ virtio_vdpa_dev_close(int vid)
 	return 0;
 }
 
+
+static void
+virtio_vdpa_free_ctrl_vq(struct virtio_vdpa_device *dev)
+{
+	if (!dev->cvq)
+		return;
+
+	rte_memzone_free(dev->cvq->cq.virtio_net_hdr_mz);
+	rte_memzone_free(dev->cvq->cq.mz);
+	rte_free(dev->cvq);
+
+	dev->hw.cvq = NULL;
+}
+
+static int
+virtio_vdpa_allocate_ctrl_vq(struct virtio_vdpa_device *dev)
+{
+	struct virtio_hw *hw = &dev->hw;
+	char vq_name[VIRTQUEUE_MAX_NAME_SZ];
+	char vq_hdr_name[VIRTQUEUE_MAX_NAME_SZ];
+	int numa_node = dev->pdev->device.numa_node;
+	const struct rte_memzone *mz = NULL, *hdr_mz = NULL;
+	uint16_t ctrl_queue_idx = dev->max_queue_pairs * 2;
+	uint16_t ctrl_queue_sz;
+	int size, ret;
+
+	if (dev->cvq)
+		virtio_vdpa_free_ctrl_vq(dev);
+
+	ctrl_queue_sz = VTPCI_OPS(hw)->get_queue_num(hw, ctrl_queue_idx);
+	if (ctrl_queue_sz == 0) {
+		DRV_LOG(ERR, "Ctrl VQ does not exist");
+		return -EINVAL;
+	}
+
+	dev->cvq = rte_zmalloc_socket(vq_name, sizeof(*dev->cvq),
+			RTE_CACHE_LINE_SIZE, numa_node);
+	if (!dev->cvq)
+		return -ENOMEM;
+
+	dev->cvq->hw = &dev->hw;
+	dev->cvq->vq_queue_index = ctrl_queue_idx;
+	dev->cvq->vq_nentries = ctrl_queue_sz;
+
+	if (vtpci_packed_queue(hw)) {
+		dev->cvq->vq_packed.used_wrap_counter = 1;
+		dev->cvq->vq_packed.cached_flags = VRING_PACKED_DESC_F_AVAIL;
+		dev->cvq->vq_packed.event_flags_shadow = 0;
+	}
+
+	size = vring_size(hw, ctrl_queue_sz, VIRTIO_PCI_VRING_ALIGN);
+	dev->cvq->vq_ring_size = RTE_ALIGN_CEIL(size, VIRTIO_PCI_VRING_ALIGN);
+
+	snprintf(vq_name, sizeof(vq_name), "vdpa_ctrlvq%d",
+		 dev->did);
+
+	mz = rte_memzone_reserve_aligned(vq_name, dev->cvq->vq_ring_size,
+			numa_node, RTE_MEMZONE_IOVA_CONTIG,
+			VIRTIO_PCI_VRING_ALIGN);
+	if (mz == NULL) {
+		if (rte_errno == EEXIST)
+			mz = rte_memzone_lookup(vq_name);
+		if (mz == NULL) {
+			ret = -ENOMEM;
+			goto out_free_cvq;
+		}
+	}
+
+	memset(mz->addr, 0, mz->len);
+	dev->cvq->vq_ring_virt_mem = mz->addr;
+
+	virtio_init_vring(dev->cvq);
+
+	snprintf(vq_hdr_name, sizeof(vq_hdr_name), "vdpa_ctrlvq%d_hdr",
+		 dev->did);
+
+	hdr_mz = rte_memzone_reserve_aligned(vq_hdr_name, PAGE_SIZE * 2,
+			numa_node, RTE_MEMZONE_IOVA_CONTIG,
+			VIRTIO_PCI_VRING_ALIGN);
+	if (hdr_mz == NULL) {
+		if (rte_errno == EEXIST)
+			hdr_mz = rte_memzone_lookup(vq_hdr_name);
+		if (hdr_mz == NULL) {
+			ret = -ENOMEM;
+			goto out_free_mz;
+		}
+	}
+
+	memset(hdr_mz->addr, 0, hdr_mz->len);
+
+	dev->cvq->cq.vq = dev->cvq;
+	dev->cvq->cq.mz = mz;
+	dev->cvq->cq.virtio_net_hdr_mz = hdr_mz;
+	dev->hw.cvq = &dev->cvq->cq;
+
+	return 0;
+
+out_free_mz:
+	rte_memzone_free(mz);
+out_free_cvq:
+	rte_free(dev->cvq);
+	dev->cvq = NULL;
+
+	return ret;
+}
+
+static int
+virtio_vdpa_set_features(int vid)
+{
+	uint64_t features;
+	int did, ret;
+	struct internal_list *list;
+	struct virtio_vdpa_device *dev;
+	struct virtio_hw *hw;
+
+	did = rte_vhost_get_vdpa_device_id(vid);
+	list = find_internal_resource_by_did(did);
+	if (list == NULL) {
+		DRV_LOG(ERR, "Invalid device id: %d", did);
+		return -1;
+	}
+
+	dev = list->dev;
+	hw = &dev->hw;
+	rte_vhost_get_negotiated_features(vid, &features);
+
+	features |= (1ULL << VIRTIO_F_IOMMU_PLATFORM);
+	if (dev->has_ctrl_vq)
+		features |= (1ULL << VIRTIO_NET_F_CTRL_VQ);
+
+	VTPCI_OPS(&dev->hw)->set_features(&dev->hw, features);
+	hw->guest_features = features;
+
+	if (vtpci_with_feature(hw, VIRTIO_NET_F_CTRL_VQ)) {
+		if (vtpci_with_feature(hw, VIRTIO_NET_F_MQ)) {
+			vtpci_read_dev_config(hw,
+				offsetof(struct virtio_net_config,
+					max_virtqueue_pairs),
+				&dev->max_queue_pairs,
+				sizeof(dev->max_queue_pairs));
+		} else {
+			dev->max_queue_pairs = 1;
+		}
+
+		ret = virtio_vdpa_allocate_ctrl_vq(dev);
+		if (ret) {
+			DRV_LOG(ERR, "Failed to allocate ctrl vq");
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.get_queue_num = virtio_vdpa_get_queue_num,
 	.get_features = virtio_vdpa_get_features,
 	.get_protocol_features = virtio_vdpa_get_protocol_features,
 	.dev_conf = virtio_vdpa_dev_config,
 	.dev_close = virtio_vdpa_dev_close,
+	.set_features = virtio_vdpa_set_features,
 };
 
 static inline int
