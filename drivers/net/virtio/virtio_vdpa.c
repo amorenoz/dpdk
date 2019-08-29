@@ -675,6 +675,38 @@ virtio_vdpa_set_features(int vid)
 	return 0;
 }
 
+static int
+virtio_vdpa_get_vfio_group_fd(int vid)
+{
+	int did;
+	struct internal_list *list;
+
+	did = rte_vhost_get_vdpa_device_id(vid);
+	list = find_internal_resource_by_did(did);
+	if (list == NULL) {
+		DRV_LOG(ERR, "Invalid device id: %d", did);
+		return -1;
+	}
+
+	return list->dev->vfio_group_fd;
+}
+
+static int
+virtio_vdpa_get_vfio_device_fd(int vid)
+{
+	int did;
+	struct internal_list *list;
+
+	did = rte_vhost_get_vdpa_device_id(vid);
+	list = find_internal_resource_by_did(did);
+	if (list == NULL) {
+		DRV_LOG(ERR, "Invalid device id: %d", did);
+		return -1;
+	}
+
+	return list->dev->vfio_dev_fd;
+}
+
 static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.get_queue_num = virtio_vdpa_get_queue_num,
 	.get_features = virtio_vdpa_get_features,
@@ -682,6 +714,8 @@ static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.dev_conf = virtio_vdpa_dev_config,
 	.dev_close = virtio_vdpa_dev_close,
 	.set_features = virtio_vdpa_set_features,
+	.get_vfio_group_fd = virtio_vdpa_get_vfio_group_fd,
+	.get_vfio_device_fd = virtio_vdpa_get_vfio_device_fd,
 };
 
 static inline int
