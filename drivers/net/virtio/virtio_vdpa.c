@@ -204,9 +204,22 @@ virtio_vdpa_get_features(int did, uint64_t *features)
 	return 0;
 }
 
+#define VDPA_SUPPORTED_PROTOCOL_FEATURES \
+		(1ULL << VHOST_USER_PROTOCOL_F_REPLY_ACK | \
+		 1ULL << VHOST_USER_PROTOCOL_F_SLAVE_REQ | \
+		 1ULL << VHOST_USER_PROTOCOL_F_SLAVE_SEND_FD | \
+		 1ULL << VHOST_USER_PROTOCOL_F_HOST_NOTIFIER)
+static int
+virtio_vdpa_get_protocol_features(int did __rte_unused, uint64_t *features)
+{
+	*features = VDPA_SUPPORTED_PROTOCOL_FEATURES;
+	return 0;
+}
+
 static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.get_queue_num = virtio_vdpa_get_queue_num,
 	.get_features = virtio_vdpa_get_features,
+	.get_protocol_features = virtio_vdpa_get_protocol_features,
 };
 
 static inline int
