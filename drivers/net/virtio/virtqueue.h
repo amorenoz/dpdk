@@ -480,6 +480,11 @@ virtqueue_notify(struct virtqueue *vq)
 	VTPCI_OPS(vq->hw)->notify_queue(vq->hw, vq);
 }
 
+int virtio_send_command(struct virtnet_ctl *cvq, struct virtio_pmd_ctrl *ctrl,
+		    int *dlen, int pkt_num);
+
+void virtio_init_vring(struct virtqueue *vq);
+
 #ifdef RTE_LIBRTE_VIRTIO_DEBUG_DUMP
 #define VIRTQUEUE_DUMP(vq) do { \
 	uint16_t used_idx, nused; \
