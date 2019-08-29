@@ -173,8 +173,40 @@ virtio_vdpa_get_queue_num(int did, uint32_t *queue_num)
 	return 0;
 }
 
+static int
+virtio_vdpa_get_features(int did, uint64_t *features)
+{
+	struct internal_list *list;
+	struct virtio_vdpa_device *dev;
+
+	list = find_internal_resource_by_did(did);
+	if (list == NULL) {
+		DRV_LOG(ERR, "Invalid device id: %d", did);
+		return -1;
+	}
+
+	dev = list->dev;
+
+	*features = VTPCI_OPS(&dev->hw)->get_features(&dev->hw);
+
+	if (!(*features & (1ULL << VIRTIO_F_IOMMU_PLATFORM))) {
+		DRV_LOG(ERR, "Device does not support IOMMU");
+		return -1;
+	}
+
+	if (*features & (1ULL << VIRTIO_NET_F_CTRL_VQ))
+		dev->has_ctrl_vq = true;
+	else
+		dev->has_ctrl_vq = false;
+
+	*features |= (1ULL << VHOST_USER_F_PROTOCOL_FEATURES);
+
+	return 0;
+}
+
 static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.get_queue_num = virtio_vdpa_get_queue_num,
+	.get_features = virtio_vdpa_get_features,
 };
 
 static inline int
