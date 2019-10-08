@@ -251,7 +251,7 @@ vhost_user_set_features(struct virtio_net **pdev, struct VhostUserMsg *msg,
 
 	rte_vhost_driver_get_features(dev->ifname, &vhost_features);
 	if (features & ~vhost_features) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"(%d) received invalid negotiated features.\n",
 			dev->vid);
 		return RTE_VHOST_MSG_RESULT_ERR;
@@ -267,7 +267,7 @@ vhost_user_set_features(struct virtio_net **pdev, struct VhostUserMsg *msg,
 		 * is enabled when the live-migration starts.
 		 */
 		if ((dev->features ^ features) & ~(1ULL << VHOST_F_LOG_ALL)) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"(%d) features changed while device is running.\n",
 				dev->vid);
 			return RTE_VHOST_MSG_RESULT_ERR;
@@ -284,9 +284,9 @@ vhost_user_set_features(struct virtio_net **pdev, struct VhostUserMsg *msg,
 	} else {
 		dev->vhost_hlen = sizeof(struct virtio_net_hdr);
 	}
-	RTE_LOG(INFO, VHOST_CONFIG,
+	VHOST_LOG_CONFIG(INFO,
 		"negotiated Virtio features: 0x%" PRIx64 "\n", dev->features);
-	VHOST_LOG_DEBUG(VHOST_CONFIG,
+	VHOST_LOG_CONFIG(DEBUG,
 		"(%d) mergeable RX buffers %s, virtio 1 %s\n",
 		dev->vid,
 		(dev->features & (1 << VIRTIO_NET_F_MRG_RXBUF)) ? "on" : "off",
@@ -339,7 +339,7 @@ vhost_user_set_vring_num(struct virtio_net **pdev,
 	 *   value is 32768.
 	 */
 	if ((vq->size & (vq->size - 1)) || vq->size > 32768) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"invalid virtqueue size %u\n", vq->size);
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
@@ -351,7 +351,7 @@ vhost_user_set_vring_num(struct virtio_net **pdev,
 		vq->zmbufs = rte_zmalloc(NULL, vq->zmbuf_size *
 					 sizeof(struct zcopy_mbuf), 0);
 		if (vq->zmbufs == NULL) {
-			RTE_LOG(WARNING, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(WARNING,
 				"failed to allocate mem for zero copy; "
 				"zero copy is force disabled\n");
 			dev->dequeue_zero_copy = 0;
@@ -365,7 +365,7 @@ vhost_user_set_vring_num(struct virtio_net **pdev,
 				sizeof(struct vring_used_elem_packed),
 				RTE_CACHE_LINE_SIZE);
 		if (!vq->shadow_used_packed) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 					"failed to allocate memory for shadow used ring.\n");
 			return RTE_VHOST_MSG_RESULT_ERR;
 		}
@@ -375,7 +375,7 @@ vhost_user_set_vring_num(struct virtio_net **pdev,
 				vq->size * sizeof(struct vring_used_elem),
 				RTE_CACHE_LINE_SIZE);
 		if (!vq->shadow_used_split) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 					"failed to allocate memory for shadow used ring.\n");
 			return RTE_VHOST_MSG_RESULT_ERR;
 		}
@@ -385,7 +385,7 @@ vhost_user_set_vring_num(struct virtio_net **pdev,
 				vq->size * sizeof(struct batch_copy_elem),
 				RTE_CACHE_LINE_SIZE);
 	if (!vq->batch_copy_elems) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"failed to allocate memory for batching copy.\n");
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
@@ -420,12 +420,12 @@ numa_realloc(struct virtio_net *dev, int index)
 	ret |= get_mempolicy(&oldnode, NULL, 0, old_vq,
 			     MPOL_F_NODE | MPOL_F_ADDR);
 	if (ret) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"Unable to get vq numa information.\n");
 		return dev;
 	}
 	if (oldnode != newnode) {
-		RTE_LOG(INFO, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(INFO,
 			"reallocate vq from %d to %d node\n", oldnode, newnode);
 		vq = rte_malloc_socket(NULL, sizeof(*vq), 0, newnode);
 		if (!vq)
@@ -481,12 +481,12 @@ numa_realloc(struct virtio_net *dev, int index)
 	ret = get_mempolicy(&oldnode, NULL, 0, old_dev,
 			    MPOL_F_NODE | MPOL_F_ADDR);
 	if (ret) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"Unable to get dev numa information.\n");
 		goto out;
 	}
 	if (oldnode != newnode) {
-		RTE_LOG(INFO, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(INFO,
 			"reallocate dev from %d to %d node\n",
 			oldnode, newnode);
 		dev = rte_malloc_socket(NULL, sizeof(*dev), 0, newnode);
@@ -585,7 +585,7 @@ translate_ring_addresses(struct virtio_net *dev, int vq_index)
 		if (vq->desc_packed == NULL ||
 				len != sizeof(struct vring_packed_desc) *
 				vq->size) {
-			RTE_LOG(DEBUG, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(DEBUG,
 				"(%d) failed to map desc_packed ring.\n",
 				dev->vid);
 			return dev;
@@ -601,7 +601,7 @@ translate_ring_addresses(struct virtio_net *dev, int vq_index)
 					vq, addr->avail_user_addr, &len);
 		if (vq->driver_event == NULL ||
 				len != sizeof(struct vring_packed_desc_event)) {
-			RTE_LOG(DEBUG, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(DEBUG,
 				"(%d) failed to find driver area address.\n",
 				dev->vid);
 			return dev;
@@ -613,7 +613,7 @@ translate_ring_addresses(struct virtio_net *dev, int vq_index)
 					vq, addr->used_user_addr, &len);
 		if (vq->device_event == NULL ||
 				len != sizeof(struct vring_packed_desc_event)) {
-			RTE_LOG(DEBUG, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(DEBUG,
 				"(%d) failed to find device area address.\n",
 				dev->vid);
 			return dev;
@@ -630,7 +630,7 @@ translate_ring_addresses(struct virtio_net *dev, int vq_index)
 	vq->desc = (struct vring_desc *)(uintptr_t)ring_addr_to_vva(dev,
 			vq, addr->desc_user_addr, &len);
 	if (vq->desc == 0 || len != sizeof(struct vring_desc) * vq->size) {
-		RTE_LOG(DEBUG, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(DEBUG,
 			"(%d) failed to map desc ring.\n",
 			dev->vid);
 		return dev;
@@ -647,7 +647,7 @@ translate_ring_addresses(struct virtio_net *dev, int vq_index)
 	vq->avail = (struct vring_avail *)(uintptr_t)ring_addr_to_vva(dev,
 			vq, addr->avail_user_addr, &len);
 	if (vq->avail == 0 || len != expected_len) {
-		RTE_LOG(DEBUG, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(DEBUG,
 			"(%d) failed to map avail ring.\n",
 			dev->vid);
 		return dev;
@@ -661,14 +661,14 @@ translate_ring_addresses(struct virtio_net *dev, int vq_index)
 	vq->used = (struct vring_used *)(uintptr_t)ring_addr_to_vva(dev,
 			vq, addr->used_user_addr, &len);
 	if (vq->used == 0 || len != expected_len) {
-		RTE_LOG(DEBUG, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(DEBUG,
 			"(%d) failed to map used ring.\n",
 			dev->vid);
 		return dev;
 	}
 
 	if (vq->last_used_idx != vq->used->idx) {
-		RTE_LOG(WARNING, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(WARNING,
 			"last_used_idx (%u) and vq->used->idx (%u) mismatches; "
 			"some packets maybe resent for Tx and dropped for Rx\n",
 			vq->last_used_idx, vq->used->idx);
@@ -678,13 +678,13 @@ translate_ring_addresses(struct virtio_net *dev, int vq_index)
 
 	vq->log_guest_addr = addr->log_guest_addr;
 
-	VHOST_LOG_DEBUG(VHOST_CONFIG, "(%d) mapped address desc: %p\n",
+	VHOST_LOG_CONFIG(DEBUG, "(%d) mapped address desc: %p\n",
 			dev->vid, vq->desc);
-	VHOST_LOG_DEBUG(VHOST_CONFIG, "(%d) mapped address avail: %p\n",
+	VHOST_LOG_CONFIG(DEBUG, "(%d) mapped address avail: %p\n",
 			dev->vid, vq->avail);
-	VHOST_LOG_DEBUG(VHOST_CONFIG, "(%d) mapped address used: %p\n",
+	VHOST_LOG_CONFIG(DEBUG, "(%d) mapped address used: %p\n",
 			dev->vid, vq->used);
-	VHOST_LOG_DEBUG(VHOST_CONFIG, "(%d) log_guest_addr: %" PRIx64 "\n",
+	VHOST_LOG_CONFIG(DEBUG, "(%d) log_guest_addr: %" PRIx64 "\n",
 			dev->vid, vq->log_guest_addr);
 
 	return dev;
@@ -775,7 +775,7 @@ add_one_guest_page(struct virtio_net *dev, uint64_t guest_phys_addr,
 		dev->guest_pages = realloc(dev->guest_pages,
 					dev->max_guest_pages * sizeof(*page));
 		if (!dev->guest_pages) {
-			RTE_LOG(ERR, VHOST_CONFIG, "cannot realloc guest_pages\n");
+			VHOST_LOG_CONFIG(ERR, "cannot realloc guest_pages\n");
 			free(old_pages);
 			return -1;
 		}
@@ -847,7 +847,7 @@ dump_guest_pages(struct virtio_net *dev)
 	for (i = 0; i < dev->nr_guest_pages; i++) {
 		page = &dev->guest_pages[i];
 
-		RTE_LOG(INFO, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(INFO,
 			"guest physical page region %u\n"
 			"\t guest_phys_addr: %" PRIx64 "\n"
 			"\t host_phys_addr : %" PRIx64 "\n"
@@ -902,13 +902,13 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *msg,
 	int fd;
 
 	if (memory->nregions > VHOST_MEMORY_MAX_NREGIONS) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"too many memory regions (%u)\n", memory->nregions);
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
 
 	if (dev->mem && !vhost_memory_changed(memory, dev->mem)) {
-		RTE_LOG(INFO, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(INFO,
 			"(%d) memory regions not changed\n", dev->vid);
 
 		for (i = 0; i < memory->nregions; i++)
@@ -934,7 +934,7 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *msg,
 		dev->guest_pages = malloc(dev->max_guest_pages *
 						sizeof(struct guest_page));
 		if (dev->guest_pages == NULL) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"(%d) failed to allocate memory "
 				"for dev->guest_pages\n",
 				dev->vid);
@@ -945,7 +945,7 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *msg,
 	dev->mem = rte_zmalloc("vhost-mem-table", sizeof(struct rte_vhost_memory) +
 		sizeof(struct rte_vhost_mem_region) * memory->nregions, 0);
 	if (dev->mem == NULL) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"(%d) failed to allocate memory for dev->mem\n",
 			dev->vid);
 		return RTE_VHOST_MSG_RESULT_ERR;
@@ -965,7 +965,7 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *msg,
 
 		/* Check for memory_size + mmap_offset overflow */
 		if (mmap_offset >= -reg->size) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"mmap_offset (%#"PRIx64") and memory_size "
 				"(%#"PRIx64") overflow\n",
 				mmap_offset, reg->size);
@@ -984,7 +984,7 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *msg,
 		 */
 		alignment = get_blk_size(fd);
 		if (alignment == (uint64_t)-1) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"couldn't get hugepage size through fstat\n");
 			goto err_mmap;
 		}
@@ -995,7 +995,7 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *msg,
 				 MAP_SHARED | populate, fd, 0);
 
 		if (mmap_addr == MAP_FAILED) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"mmap region %u failed.\n", i);
 			goto err_mmap;
 		}
@@ -1007,13 +1007,13 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *msg,
 
 		if (dev->dequeue_zero_copy)
 			if (add_guest_pages(dev, reg, alignment) < 0) {
-				RTE_LOG(ERR, VHOST_CONFIG,
+				VHOST_LOG_CONFIG(ERR,
 					"adding guest pages to region %u failed.\n",
 					i);
 				goto err_mmap;
 			}
 
-		RTE_LOG(INFO, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(INFO,
 			"guest memory region %u, size: 0x%" PRIx64 "\n"
 			"\t guest physical addr: 0x%" PRIx64 "\n"
 			"\t guest virtual  addr: 0x%" PRIx64 "\n"
@@ -1051,12 +1051,12 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *msg,
 		 */
 		VhostUserMsg ack_msg;
 		if (read_vhost_message(main_fd, &ack_msg) <= 0) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"Failed to read qemu ack on postcopy set-mem-table\n");
 			goto err_mmap;
 		}
 		if (ack_msg.request.master != VHOST_USER_SET_MEM_TABLE) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"Bad qemu ack on postcopy set-mem-table (%d)\n",
 				ack_msg.request.master);
 			goto err_mmap;
@@ -1079,13 +1079,13 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *msg,
 
 			if (ioctl(dev->postcopy_ufd, UFFDIO_REGISTER,
 						&reg_struct)) {
-				RTE_LOG(ERR, VHOST_CONFIG,
+				VHOST_LOG_CONFIG(ERR,
 					"Failed to register ufd for region %d: (ufd = %d) %s\n",
 					i, dev->postcopy_ufd,
 					strerror(errno));
 				goto err_mmap;
 			}
-			RTE_LOG(INFO, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(INFO,
 				"\t userfaultfd registered for range : %llx - %llx\n",
 				reg_struct.range.start,
 				reg_struct.range.start +
@@ -1162,7 +1162,7 @@ virtio_is_ready(struct virtio_net *dev)
 			return 0;
 	}
 
-	RTE_LOG(INFO, VHOST_CONFIG,
+	VHOST_LOG_CONFIG(INFO,
 		"virtio is now ready for processing.\n");
 	return 1;
 }
@@ -1180,7 +1180,7 @@ vhost_user_set_vring_call(struct virtio_net **pdev, struct VhostUserMsg *msg,
 		file.fd = VIRTIO_INVALID_EVENTFD;
 	else
 		file.fd = msg->fds[0];
-	RTE_LOG(INFO, VHOST_CONFIG,
+	VHOST_LOG_CONFIG(INFO,
 		"vring call idx:%d file:%d\n", file.index, file.fd);
 
 	vq = dev->virtqueue[file.index];
@@ -1198,7 +1198,7 @@ static int vhost_user_set_vring_err(struct virtio_net **pdev __rte_unused,
 {
 	if (!(msg->payload.u64 & VHOST_USER_VRING_NOFD_MASK))
 		close(msg->fds[0]);
-	RTE_LOG(INFO, VHOST_CONFIG, "not implemented\n");
+	VHOST_LOG_CONFIG(INFO, "not implemented\n");
 
 	return RTE_VHOST_MSG_RESULT_OK;
 }
@@ -1216,7 +1216,7 @@ vhost_user_set_vring_kick(struct virtio_net **pdev, struct VhostUserMsg *msg,
 		file.fd = VIRTIO_INVALID_EVENTFD;
 	else
 		file.fd = msg->fds[0];
-	RTE_LOG(INFO, VHOST_CONFIG,
+	VHOST_LOG_CONFIG(INFO,
 		"vring kick idx:%d file:%d\n", file.index, file.fd);
 
 	/* Interpret ring addresses only when ring is started. */
@@ -1286,7 +1286,7 @@ vhost_user_get_vring_base(struct virtio_net **pdev,
 		msg->payload.state.num = vq->last_avail_idx;
 	}
 
-	RTE_LOG(INFO, VHOST_CONFIG,
+	VHOST_LOG_CONFIG(INFO,
 		"vring base idx:%d file:%d\n", msg->payload.state.index,
 		msg->payload.state.num);
 	/*
@@ -1340,7 +1340,7 @@ vhost_user_set_vring_enable(struct virtio_net **pdev,
 	struct rte_vdpa_device *vdpa_dev;
 	int did = -1;
 
-	RTE_LOG(INFO, VHOST_CONFIG,
+	VHOST_LOG_CONFIG(INFO,
 		"set queue enable: %d to qp idx: %d\n",
 		enable, index);
 
@@ -1401,14 +1401,14 @@ vhost_user_set_protocol_features(struct virtio_net **pdev,
 	rte_vhost_driver_get_protocol_features(dev->ifname,
 			&slave_protocol_features);
 	if (protocol_features & ~slave_protocol_features) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"(%d) received invalid protocol features.\n",
 			dev->vid);
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
 
 	dev->protocol_features = protocol_features;
-	RTE_LOG(INFO, VHOST_CONFIG,
+	VHOST_LOG_CONFIG(INFO,
 		"negotiated Vhost-user protocol features: 0x%" PRIx64 "\n",
 		dev->protocol_features);
 
@@ -1425,12 +1425,12 @@ vhost_user_set_log_base(struct virtio_net **pdev, struct VhostUserMsg *msg,
 	void *addr;
 
 	if (fd < 0) {
-		RTE_LOG(ERR, VHOST_CONFIG, "invalid log fd: %d\n", fd);
+		VHOST_LOG_CONFIG(ERR, "invalid log fd: %d\n", fd);
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
 
 	if (msg->size != sizeof(VhostUserLog)) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"invalid log base msg size: %"PRId32" != %d\n",
 			msg->size, (int)sizeof(VhostUserLog));
 		return RTE_VHOST_MSG_RESULT_ERR;
@@ -1441,13 +1441,13 @@ vhost_user_set_log_base(struct virtio_net **pdev, struct VhostUserMsg *msg,
 
 	/* Don't allow mmap_offset to point outside the mmap region */
 	if (off > size) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"log offset %#"PRIx64" exceeds log size %#"PRIx64"\n",
 			off, size);
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
 
-	RTE_LOG(INFO, VHOST_CONFIG,
+	VHOST_LOG_CONFIG(INFO,
 		"log mmap size: %"PRId64", offset: %"PRId64"\n",
 		size, off);
 
@@ -1458,7 +1458,7 @@ vhost_user_set_log_base(struct virtio_net **pdev, struct VhostUserMsg *msg,
 	addr = mmap(0, size + off, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	close(fd);
 	if (addr == MAP_FAILED) {
-		RTE_LOG(ERR, VHOST_CONFIG, "mmap log base failed!\n");
+		VHOST_LOG_CONFIG(ERR, "mmap log base failed!\n");
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
 
@@ -1488,7 +1488,7 @@ static int vhost_user_set_log_fd(struct virtio_net **pdev __rte_unused,
 			int main_fd __rte_unused)
 {
 	close(msg->fds[0]);
-	RTE_LOG(INFO, VHOST_CONFIG, "not implemented.\n");
+	VHOST_LOG_CONFIG(INFO, "not implemented.\n");
 
 	return RTE_VHOST_MSG_RESULT_OK;
 }
@@ -1510,7 +1510,7 @@ vhost_user_send_rarp(struct virtio_net **pdev, struct VhostUserMsg *msg,
 	struct rte_vdpa_device *vdpa_dev;
 	int did = -1;
 
-	RTE_LOG(DEBUG, VHOST_CONFIG,
+	VHOST_LOG_CONFIG(DEBUG,
 		":: mac: %02x:%02x:%02x:%02x:%02x:%02x\n",
 		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	memcpy(dev->mac.addr_bytes, mac, 6);
@@ -1539,7 +1539,7 @@ vhost_user_net_set_mtu(struct virtio_net **pdev, struct VhostUserMsg *msg,
 	struct virtio_net *dev = *pdev;
 	if (msg->payload.u64 < VIRTIO_MIN_MTU ||
 			msg->payload.u64 > VIRTIO_MAX_MTU) {
-		RTE_LOG(ERR, VHOST_CONFIG, "Invalid MTU size (%"PRIu64")\n",
+		VHOST_LOG_CONFIG(ERR, "Invalid MTU size (%"PRIu64")\n",
 				msg->payload.u64);
 
 		return RTE_VHOST_MSG_RESULT_ERR;
@@ -1558,7 +1558,7 @@ vhost_user_set_req_fd(struct virtio_net **pdev, struct VhostUserMsg *msg,
 	int fd = msg->fds[0];
 
 	if (fd < 0) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 				"Invalid file descriptor for slave channel (%d)\n",
 				fd);
 		return RTE_VHOST_MSG_RESULT_ERR;
@@ -1656,7 +1656,7 @@ vhost_user_iotlb_msg(struct virtio_net **pdev, struct VhostUserMsg *msg,
 		}
 		break;
 	default:
-		RTE_LOG(ERR, VHOST_CONFIG, "Invalid IOTLB message type (%d)\n",
+		VHOST_LOG_CONFIG(ERR, "Invalid IOTLB message type (%d)\n",
 				imsg->type);
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
@@ -1676,14 +1676,14 @@ vhost_user_set_postcopy_advise(struct virtio_net **pdev,
 	dev->postcopy_ufd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
 
 	if (dev->postcopy_ufd == -1) {
-		RTE_LOG(ERR, VHOST_CONFIG, "Userfaultfd not available: %s\n",
+		VHOST_LOG_CONFIG(ERR, "Userfaultfd not available: %s\n",
 			strerror(errno));
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
 	api_struct.api = UFFD_API;
 	api_struct.features = 0;
 	if (ioctl(dev->postcopy_ufd, UFFDIO_API, &api_struct)) {
-		RTE_LOG(ERR, VHOST_CONFIG, "UFFDIO_API ioctl failure: %s\n",
+		VHOST_LOG_CONFIG(ERR, "UFFDIO_API ioctl failure: %s\n",
 			strerror(errno));
 		close(dev->postcopy_ufd);
 		dev->postcopy_ufd = -1;
@@ -1709,7 +1709,7 @@ vhost_user_set_postcopy_listen(struct virtio_net **pdev,
 	struct virtio_net *dev = *pdev;
 
 	if (dev->mem && dev->mem->nregions) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"Regions already registered at postcopy-listen\n");
 		return RTE_VHOST_MSG_RESULT_ERR;
 	}
@@ -1783,7 +1783,7 @@ read_vhost_message(int sockfd, struct VhostUserMsg *msg)
 
 	if (msg->size) {
 		if (msg->size > sizeof(msg->payload)) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"invalid msg size: %d\n", msg->size);
 			return -1;
 		}
@@ -1791,7 +1791,7 @@ read_vhost_message(int sockfd, struct VhostUserMsg *msg)
 		if (ret <= 0)
 			return ret;
 		if (ret != (int)msg->size) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"read control message failed\n");
 			return -1;
 		}
@@ -1867,7 +1867,7 @@ vhost_user_check_and_alloc_queue_pair(struct virtio_net *dev,
 	}
 
 	if (vring_idx >= VHOST_MAX_VRING) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"invalid vring index: %u\n", vring_idx);
 		return -1;
 	}
@@ -1931,7 +1931,7 @@ vhost_user_msg_handler(int vid, int fd)
 	if (!dev->notify_ops) {
 		dev->notify_ops = vhost_driver_callback_get(dev->ifname);
 		if (!dev->notify_ops) {
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"failed to get callback ops for driver %s\n",
 				dev->ifname);
 			return -1;
@@ -1941,10 +1941,10 @@ vhost_user_msg_handler(int vid, int fd)
 	ret = read_vhost_message(fd, &msg);
 	if (ret <= 0) {
 		if (ret < 0)
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"vhost read message failed\n");
 		else
-			RTE_LOG(INFO, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(INFO,
 				"vhost peer closed\n");
 
 		return -1;
@@ -1955,18 +1955,18 @@ vhost_user_msg_handler(int vid, int fd)
 	if (request > VHOST_USER_NONE && request < VHOST_USER_MAX &&
 			vhost_message_str[request]) {
 		if (request != VHOST_USER_IOTLB_MSG)
-			RTE_LOG(INFO, VHOST_CONFIG, "read message %s\n",
+			VHOST_LOG_CONFIG(INFO, "read message %s\n",
 				vhost_message_str[request]);
 		else
-			RTE_LOG(DEBUG, VHOST_CONFIG, "read message %s\n",
+			VHOST_LOG_CONFIG(DEBUG, "read message %s\n",
 				vhost_message_str[request]);
 	} else {
-		RTE_LOG(DEBUG, VHOST_CONFIG, "External request %d\n", request);
+		VHOST_LOG_CONFIG(DEBUG, "External request %d\n", request);
 	}
 
 	ret = vhost_user_check_and_alloc_queue_pair(dev, &msg);
 	if (ret < 0) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"failed to alloc queue\n");
 		return -1;
 	}
@@ -2028,19 +2028,19 @@ vhost_user_msg_handler(int vid, int fd)
 
 		switch (ret) {
 		case RTE_VHOST_MSG_RESULT_ERR:
-			RTE_LOG(ERR, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(ERR,
 				"Processing %s failed.\n",
 				vhost_message_str[request]);
 			handled = true;
 			break;
 		case RTE_VHOST_MSG_RESULT_OK:
-			RTE_LOG(DEBUG, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(DEBUG,
 				"Processing %s succeeded.\n",
 				vhost_message_str[request]);
 			handled = true;
 			break;
 		case RTE_VHOST_MSG_RESULT_REPLY:
-			RTE_LOG(DEBUG, VHOST_CONFIG,
+			VHOST_LOG_CONFIG(DEBUG,
 				"Processing %s succeeded and needs reply.\n",
 				vhost_message_str[request]);
 			send_vhost_reply(fd, &msg);
@@ -2074,7 +2074,7 @@ skip_to_post_handle:
 
 	/* If message was not handled at this stage, treat it as an error */
 	if (!handled) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"vhost message (req: %d) was not handled.\n", request);
 		ret = RTE_VHOST_MSG_RESULT_ERR;
 	}
@@ -2090,7 +2090,7 @@ skip_to_post_handle:
 		msg.fd_num = 0;
 		send_vhost_reply(fd, &msg);
 	} else if (ret == RTE_VHOST_MSG_RESULT_ERR) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"vhost message handling failed.\n");
 		return -1;
 	}
@@ -2100,7 +2100,7 @@ skip_to_post_handle:
 
 		if (!(dev->flags & VIRTIO_DEV_RUNNING)) {
 			if (dev->dequeue_zero_copy) {
-				RTE_LOG(INFO, VHOST_CONFIG,
+				VHOST_LOG_CONFIG(INFO,
 						"dequeue zero copy is enabled\n");
 			}
 
@@ -2137,7 +2137,7 @@ static int process_slave_message_reply(struct virtio_net *dev,
 	}
 
 	if (msg_reply.request.slave != msg->request.slave) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"Received unexpected msg type (%u), expected %u\n",
 			msg_reply.request.slave, msg->request.slave);
 		ret = -1;
@@ -2168,7 +2168,7 @@ vhost_user_iotlb_miss(struct virtio_net *dev, uint64_t iova, uint8_t perm)
 
 	ret = send_vhost_message(dev->slave_req_fd, &msg);
 	if (ret < 0) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 				"Failed to send IOTLB miss message (%d)\n",
 				ret);
 		return ret;
@@ -2203,7 +2203,7 @@ static int vhost_user_slave_set_vring_host_notifier(struct virtio_net *dev,
 
 	ret = send_vhost_slave_message(dev, &msg);
 	if (ret < 0) {
-		RTE_LOG(ERR, VHOST_CONFIG,
+		VHOST_LOG_CONFIG(ERR,
 			"Failed to set host notifier (%d)\n", ret);
 		return ret;
 	}
