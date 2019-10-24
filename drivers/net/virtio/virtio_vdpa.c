@@ -44,6 +44,7 @@ struct virtio_vdpa_device {
 	int did;
 	uint16_t max_queue_pairs;
 	bool has_ctrl_vq;
+	bool has_iommu_platform;
 	struct virtqueue *vqs;
 	struct virtqueue *cvq;
 	rte_spinlock_t lock;
@@ -325,7 +326,16 @@ virtio_vdpa_get_features(int did, uint64_t *features)
 
 	*features = VTPCI_OPS(&dev->hw)->get_features(&dev->hw);
 
-	if (!(*features & (1ULL << VIRTIO_F_IOMMU_PLATFORM))) {
+	if (*features & (1ULL << VIRTIO_F_IOMMU_PLATFORM))
+		dev->has_iommu_platform = true;
+	else
+		dev->has_iommu_platform = false;
+
+	if (!dev->has_iommu_platform && !virtio_vdpa_is_alibaba(dev)) {
+		/*
+		 * Alibaba device does not advertise IOMMU support but
+		 * actually supports it.
+		 */
 		DRV_LOG(ERR, "Device does not support IOMMU");
 		return -1;
 	}
@@ -662,7 +672,9 @@ virtio_vdpa_set_features(int vid)
 	hw = &dev->hw;
 	rte_vhost_get_negotiated_features(vid, &features);
 
-	features |= (1ULL << VIRTIO_F_IOMMU_PLATFORM);
+	if (dev->has_iommu_platform)
+		features |= (1ULL << VIRTIO_F_IOMMU_PLATFORM);
+
 	if (dev->has_ctrl_vq)
 		features |= (1ULL << VIRTIO_NET_F_CTRL_VQ);
 
