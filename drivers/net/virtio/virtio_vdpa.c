@@ -106,6 +106,21 @@ find_internal_resource_by_dev(struct rte_pci_device *pdev)
 	return list;
 }
 
+static bool
+virtio_vdpa_is_alibaba(struct virtio_vdpa_device *dev)
+{
+	struct rte_pci_id *id = &dev->pdev->id;
+
+	if (id->class_id == RTE_CLASS_ANY_ID &&
+	    id->vendor_id == VIRTIO_PCI_VENDORID &&
+	    id->device_id == VIRTIO_PCI_LEGACY_DEVICEID_NET &&
+	    id->subsystem_vendor_id == VIRTIO_PCI_VENDORID &&
+	    id->subsystem_device_id == VIRTIO_PCI_SUBSY_DEVICEID_ALI)
+		return true;
+
+	return false;
+}
+
 static int
 virtio_vdpa_dma_map_ctrl_queue(struct virtio_vdpa_device *dev, int do_map,
 		uint64_t iova)
@@ -893,6 +908,12 @@ static const struct rte_pci_id pci_id_virtio_vdpa_map[] = {
 	  .device_id = VIRTIO_PCI_MODERN_DEVICEID_NET,
 	  .subsystem_vendor_id = VIRTIO_PCI_VENDORID,
 	  .subsystem_device_id = VIRTIO_PCI_SUBSY_DEVICEID_NET,
+	},
+	{ .class_id = RTE_CLASS_ANY_ID,
+	  .vendor_id = VIRTIO_PCI_VENDORID,
+	  .device_id = VIRTIO_PCI_LEGACY_DEVICEID_NET,
+	  .subsystem_vendor_id = VIRTIO_PCI_VENDORID,
+	  .subsystem_device_id = VIRTIO_PCI_SUBSY_DEVICEID_ALI,
 	},
 	{ .vendor_id = 0, /* sentinel */
 	},
