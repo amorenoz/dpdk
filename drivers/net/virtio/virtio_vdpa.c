@@ -340,6 +340,13 @@ virtio_vdpa_get_features(int did, uint64_t *features)
 		return -1;
 	}
 
+	/*
+	 * ToDo: Investigate the reason why CTRL queue does not work with
+	 * Alibaba device.
+	 */
+	if (virtio_vdpa_is_alibaba(dev))
+		*features &= ~(1ULL << VIRTIO_NET_F_CTRL_VQ);
+
 	if (*features & (1ULL << VIRTIO_NET_F_CTRL_VQ))
 		dev->has_ctrl_vq = true;
 	else
