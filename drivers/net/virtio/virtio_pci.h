@@ -269,6 +269,7 @@ struct virtio_hw {
 	rte_spinlock_t state_lock;
 	struct rte_mbuf **inject_pkts;
 	bool        opened;
+	bool is_alibaba;
 
 	struct virtqueue **vqs;
 };

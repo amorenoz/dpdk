@@ -47,6 +47,73 @@ check_vq_phys_addr_ok(struct virtqueue *vq)
 	return 1;
 }
 
+static int
+virtio_pci_ioport_map(struct virtio_hw *hw,
+		struct rte_pci_device *dev, int bar,
+		struct rte_pci_ioport *p)
+{
+	if (hw->is_alibaba)
+		return 0;
+
+	return rte_pci_ioport_map(dev, bar, p);
+}
+
+static void
+virtio_pci_ioport_write(struct virtio_hw *hw,
+		const void *data, size_t len, off_t offset)
+{
+	struct rte_pci_ioport *p = VTPCI_IO(hw);
+	const uint8_t *s;
+	int size;
+	uint8_t *reg = (uint8_t*)p->dev->mem_resource[0].addr + offset;
+
+	if (!hw->is_alibaba) {
+		rte_pci_ioport_write(p, data, len, offset);
+		return;
+	}
+
+	for (s = data; len > 0; s += size, reg += size, len -= size) {
+		if (len >= 4) {
+			size = 4;
+			rte_write32(*(const uint32_t *)s, (void*)reg);
+		} else if (len >= 2) {
+			size = 2;
+			rte_write16(*(const uint16_t *)s, (void*)reg);
+		} else {
+			size = 1;
+			rte_write8(*s, (void*)reg);
+		}
+	}
+}
+
+static void
+virtio_pci_ioport_read(struct virtio_hw *hw,
+		void *data, size_t len, off_t offset)
+{
+	struct rte_pci_ioport *p = VTPCI_IO(hw);
+	uint8_t *d;
+	int size;
+	uint8_t *reg = (uint8_t*)p->dev->mem_resource[0].addr + offset;
+
+	if (!hw->is_alibaba) {
+		rte_pci_ioport_read(p, data, len, offset);
+		return;
+	}
+
+	for (d = data; len > 0; d += size, reg += size, len -= size) {
+		if (len >= 4) {
+			size = 4;
+			*(uint32_t *)d = rte_read32((void*)reg);
+		} else if (len >= 2) {
+			size = 2;
+			*(uint16_t *)d = rte_read16((void*)reg);
+		} else {
+			size = 1;
+			*d = rte_read8((void*)reg);
+		}
+	}
+}
+
 /*
  * Since we are in legacy mode:
  * http://ozlabs.org/~rusty/virtio-spec/virtio-0.9.5.pdf
@@ -68,17 +135,17 @@ legacy_read_dev_config(struct virtio_hw *hw, size_t offset,
 	while (length > 0) {
 		if (length >= 4) {
 			size = 4;
-			rte_pci_ioport_read(VTPCI_IO(hw), dst, size,
+			virtio_pci_ioport_read(hw, dst, size,
 				VIRTIO_PCI_CONFIG(hw) + offset);
 			*(uint32_t *)dst = rte_be_to_cpu_32(*(uint32_t *)dst);
 		} else if (length >= 2) {
 			size = 2;
-			rte_pci_ioport_read(VTPCI_IO(hw), dst, size,
+			virtio_pci_ioport_read(hw, dst, size,
 				VIRTIO_PCI_CONFIG(hw) + offset);
 			*(uint16_t *)dst = rte_be_to_cpu_16(*(uint16_t *)dst);
 		} else {
 			size = 1;
-			rte_pci_ioport_read(VTPCI_IO(hw), dst, size,
+			virtio_pci_ioport_read(hw, dst, size,
 				VIRTIO_PCI_CONFIG(hw) + offset);
 		}
 
@@ -87,7 +154,7 @@ legacy_read_dev_config(struct virtio_hw *hw, size_t offset,
 		length -= size;
 	}
 #else
-	rte_pci_ioport_read(VTPCI_IO(hw), dst, length,
+	virtio_pci_ioport_read(hw, dst, length,
 		VIRTIO_PCI_CONFIG(hw) + offset);
 #endif
 }
@@ -107,16 +174,16 @@ legacy_write_dev_config(struct virtio_hw *hw, size_t offset,
 		if (length >= 4) {
 			size = 4;
 			tmp.u32 = rte_cpu_to_be_32(*(const uint32_t *)src);
-			rte_pci_ioport_write(VTPCI_IO(hw), &tmp.u32, size,
+			virtio_pci_ioport_write(hw, &tmp.u32, size,
 				VIRTIO_PCI_CONFIG(hw) + offset);
 		} else if (length >= 2) {
 			size = 2;
 			tmp.u16 = rte_cpu_to_be_16(*(const uint16_t *)src);
-			rte_pci_ioport_write(VTPCI_IO(hw), &tmp.u16, size,
+			virtio_pci_ioport_write(hw, &tmp.u16, size,
 				VIRTIO_PCI_CONFIG(hw) + offset);
 		} else {
 			size = 1;
-			rte_pci_ioport_write(VTPCI_IO(hw), src, size,
+			virtio_pci_ioport_write(hw, src, size,
 				VIRTIO_PCI_CONFIG(hw) + offset);
 		}
 
@@ -125,7 +192,7 @@ legacy_write_dev_config(struct virtio_hw *hw, size_t offset,
 		length -= size;
 	}
 #else
-	rte_pci_ioport_write(VTPCI_IO(hw), src, length,
+	virtio_pci_ioport_write(hw, src, length,
 		VIRTIO_PCI_CONFIG(hw) + offset);
 #endif
 }
@@ -135,7 +202,7 @@ legacy_get_features(struct virtio_hw *hw)
 {
 	uint32_t dst;
 
-	rte_pci_ioport_read(VTPCI_IO(hw), &dst, 4, VIRTIO_PCI_HOST_FEATURES);
+	virtio_pci_ioport_read(hw, &dst, 4, VIRTIO_PCI_HOST_FEATURES);
 	return dst;
 }
 
@@ -147,7 +214,7 @@ legacy_set_features(struct virtio_hw *hw, uint64_t features)
 			"only 32 bit features are allowed for legacy virtio!");
 		return;
 	}
-	rte_pci_ioport_write(VTPCI_IO(hw), &features, 4,
+	virtio_pci_ioport_write(hw, &features, 4,
 		VIRTIO_PCI_GUEST_FEATURES);
 }
 
@@ -156,14 +223,14 @@ legacy_get_status(struct virtio_hw *hw)
 {
 	uint8_t dst;
 
-	rte_pci_ioport_read(VTPCI_IO(hw), &dst, 1, VIRTIO_PCI_STATUS);
+	virtio_pci_ioport_read(hw, &dst, 1, VIRTIO_PCI_STATUS);
 	return dst;
 }
 
 static void
 legacy_set_status(struct virtio_hw *hw, uint8_t status)
 {
-	rte_pci_ioport_write(VTPCI_IO(hw), &status, 1, VIRTIO_PCI_STATUS);
+	virtio_pci_ioport_write(hw, &status, 1, VIRTIO_PCI_STATUS);
 }
 
 static uint8_t
@@ -171,7 +238,7 @@ legacy_get_isr(struct virtio_hw *hw)
 {
 	uint8_t dst;
 
-	rte_pci_ioport_read(VTPCI_IO(hw), &dst, 1, VIRTIO_PCI_ISR);
+	virtio_pci_ioport_read(hw, &dst, 1, VIRTIO_PCI_ISR);
 	return dst;
 }
 
@@ -181,8 +248,8 @@ legacy_set_config_irq(struct virtio_hw *hw, uint16_t vec)
 {
 	uint16_t dst;
 
-	rte_pci_ioport_write(VTPCI_IO(hw), &vec, 2, VIRTIO_MSI_CONFIG_VECTOR);
-	rte_pci_ioport_read(VTPCI_IO(hw), &dst, 2, VIRTIO_MSI_CONFIG_VECTOR);
+	virtio_pci_ioport_write(hw, &vec, 2, VIRTIO_MSI_CONFIG_VECTOR);
+	virtio_pci_ioport_read(hw, &dst, 2, VIRTIO_MSI_CONFIG_VECTOR);
 	return dst;
 }
 
@@ -191,10 +258,10 @@ legacy_set_queue_irq(struct virtio_hw *hw, struct virtqueue *vq, uint16_t vec)
 {
 	uint16_t dst;
 
-	rte_pci_ioport_write(VTPCI_IO(hw), &vq->vq_queue_index, 2,
+	virtio_pci_ioport_write(hw, &vq->vq_queue_index, 2,
 		VIRTIO_PCI_QUEUE_SEL);
-	rte_pci_ioport_write(VTPCI_IO(hw), &vec, 2, VIRTIO_MSI_QUEUE_VECTOR);
-	rte_pci_ioport_read(VTPCI_IO(hw), &dst, 2, VIRTIO_MSI_QUEUE_VECTOR);
+	virtio_pci_ioport_write(hw, &vec, 2, VIRTIO_MSI_QUEUE_VECTOR);
+	virtio_pci_ioport_read(hw, &dst, 2, VIRTIO_MSI_QUEUE_VECTOR);
 	return dst;
 }
 
@@ -203,8 +270,8 @@ legacy_get_queue_num(struct virtio_hw *hw, uint16_t queue_id)
 {
 	uint16_t dst;
 
-	rte_pci_ioport_write(VTPCI_IO(hw), &queue_id, 2, VIRTIO_PCI_QUEUE_SEL);
-	rte_pci_ioport_read(VTPCI_IO(hw), &dst, 2, VIRTIO_PCI_QUEUE_NUM);
+	virtio_pci_ioport_write(hw, &queue_id, 2, VIRTIO_PCI_QUEUE_SEL);
+	virtio_pci_ioport_read(hw, &dst, 2, VIRTIO_PCI_QUEUE_NUM);
 	return dst;
 }
 
@@ -216,10 +283,10 @@ legacy_setup_queue(struct virtio_hw *hw, struct virtqueue *vq)
 	if (!check_vq_phys_addr_ok(vq))
 		return -1;
 
-	rte_pci_ioport_write(VTPCI_IO(hw), &vq->vq_queue_index, 2,
+	virtio_pci_ioport_write(hw, &vq->vq_queue_index, 2,
 		VIRTIO_PCI_QUEUE_SEL);
 	src = vq->vq_ring_mem >> VIRTIO_PCI_QUEUE_ADDR_SHIFT;
-	rte_pci_ioport_write(VTPCI_IO(hw), &src, 4, VIRTIO_PCI_QUEUE_PFN);
+	virtio_pci_ioport_write(hw, &src, 4, VIRTIO_PCI_QUEUE_PFN);
 
 	return 0;
 }
@@ -229,15 +296,15 @@ legacy_del_queue(struct virtio_hw *hw, struct virtqueue *vq)
 {
 	uint32_t src = 0;
 
-	rte_pci_ioport_write(VTPCI_IO(hw), &vq->vq_queue_index, 2,
+	virtio_pci_ioport_write(hw, &vq->vq_queue_index, 2,
 		VIRTIO_PCI_QUEUE_SEL);
-	rte_pci_ioport_write(VTPCI_IO(hw), &src, 4, VIRTIO_PCI_QUEUE_PFN);
+	virtio_pci_ioport_write(hw, &src, 4, VIRTIO_PCI_QUEUE_PFN);
 }
 
 static void
 legacy_notify_queue(struct virtio_hw *hw, struct virtqueue *vq)
 {
-	rte_pci_ioport_write(VTPCI_IO(hw), &vq->vq_queue_index, 2,
+	virtio_pci_ioport_write(hw, &vq->vq_queue_index, 2,
 		VIRTIO_PCI_QUEUE_NOTIFY);
 }
 
@@ -679,7 +746,7 @@ vtpci_init(struct rte_pci_device *dev, struct virtio_hw *hw)
 	}
 
 	PMD_INIT_LOG(INFO, "trying with legacy virtio pci.");
-	if (rte_pci_ioport_map(dev, 0, VTPCI_IO(hw)) < 0) {
+	if (virtio_pci_ioport_map(hw, dev, 0, VTPCI_IO(hw)) < 0) {
 		rte_pci_unmap_device(dev);
 		if (dev->kdrv == RTE_KDRV_UNKNOWN &&
 		    (!dev->device.devargs ||

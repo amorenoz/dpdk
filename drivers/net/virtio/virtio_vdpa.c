@@ -866,6 +866,9 @@ virtio_vdpa_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 	dev->max_queue_pairs = 1;
 	list->dev = dev;
 
+	if (virtio_vdpa_is_alibaba(dev))
+		dev->hw.is_alibaba = true;
+
 	if (vtpci_init(pci_dev, &dev->hw))
 		goto err_free_vfio;
 
