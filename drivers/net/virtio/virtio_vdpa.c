@@ -45,6 +45,7 @@ struct virtio_vdpa_device {
 	uint16_t max_queue_pairs;
 	bool has_ctrl_vq;
 	bool has_iommu_platform;
+	bool reset_done;
 	struct virtqueue *vqs;
 	struct virtqueue *cvq;
 	rte_spinlock_t lock;
@@ -310,6 +311,19 @@ virtio_vdpa_get_queue_num(int did, uint32_t *queue_num)
 	return 0;
 }
 
+static inline void
+virtio_vdpa_reset_device(struct virtio_vdpa_device *dev)
+{
+	if(dev->reset_done)
+		return;
+
+	vtpci_reset(&dev->hw);
+	vtpci_set_status(&dev->hw, VIRTIO_CONFIG_STATUS_ACK);
+	vtpci_set_status(&dev->hw, VIRTIO_CONFIG_STATUS_DRIVER);
+
+	dev->reset_done = true;
+}
+
 static int
 virtio_vdpa_get_features(int did, uint64_t *features)
 {
@@ -323,6 +337,8 @@ virtio_vdpa_get_features(int did, uint64_t *features)
 	}
 
 	dev = list->dev;
+
+	virtio_vdpa_reset_device(dev);
 
 	*features = VTPCI_OPS(&dev->hw)->get_features(&dev->hw);
 
