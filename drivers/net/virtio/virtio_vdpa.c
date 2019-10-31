@@ -5,6 +5,7 @@
 
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/epoll.h>
 
 #include <rte_kvargs.h>
 #include <rte_malloc.h>
@@ -49,6 +50,8 @@ struct virtio_vdpa_device {
 	struct virtqueue *vqs;
 	struct virtqueue *cvq;
 	rte_spinlock_t lock;
+	pthread_t tid;
+	int epfd;
 };
 
 struct internal_list {
@@ -121,6 +124,103 @@ virtio_vdpa_is_alibaba(struct virtio_vdpa_device *dev)
 		return true;
 
 	return false;
+}
+
+static void *
+notify_relay(void *arg)
+{
+	int i, kickfd, epfd, nfds = 0;
+	uint32_t qid, q_num;
+	struct epoll_event events[32];
+	struct epoll_event ev;
+	uint64_t buf;
+	int nbytes;
+	struct rte_vhost_vring vring;
+	struct virtio_vdpa_device *dev = (struct virtio_vdpa_device *)arg;
+	struct virtio_hw *hw = &dev->hw;
+
+	q_num = rte_vhost_get_vring_num(dev->vid);
+
+	epfd = epoll_create(32);
+	if (epfd < 0) {
+		DRV_LOG(ERR, "failed to create epoll instance.");
+		return NULL;
+	}
+	dev->epfd = epfd;
+
+	for (qid = 0; qid < q_num; qid++) {
+		ev.events = EPOLLIN | EPOLLPRI;
+		rte_vhost_get_vhost_vring(dev->vid, qid, &vring);
+		ev.data.u64 = qid | (uint64_t)vring.kickfd << 32;
+		if (epoll_ctl(epfd, EPOLL_CTL_ADD, vring.kickfd, &ev) < 0) {
+			DRV_LOG(ERR, "epoll add error: %s", strerror(errno));
+			return NULL;
+		}
+	}
+
+	for (;;) {
+		nfds = epoll_wait(epfd, events, q_num, -1);
+		if (nfds < 0) {
+			if (errno == EINTR)
+				continue;
+			DRV_LOG(ERR, "epoll_wait return fail\n");
+			return NULL;
+		}
+
+		for (i = 0; i < nfds; i++) {
+			qid = events[i].data.u32;
+			kickfd = (uint32_t)(events[i].data.u64 >> 32);
+			do {
+				nbytes = read(kickfd, &buf, 8);
+				if (nbytes < 0) {
+					if (errno == EINTR ||
+							errno == EWOULDBLOCK ||
+							errno == EAGAIN)
+						continue;
+					DRV_LOG(INFO, "Error reading "
+							"kickfd: %s",
+							strerror(errno));
+				}
+				break;
+			} while (1);
+
+			VTPCI_OPS(hw)->notify_queue(hw, &dev->vqs[qid]);
+		}
+	}
+
+	return NULL;
+}
+
+static int
+setup_notify_relay(struct virtio_vdpa_device *dev)
+{
+	int ret;
+
+	ret = pthread_create(&dev->tid, NULL, notify_relay,
+			(void *)dev);
+	if (ret) {
+		DRV_LOG(ERR, "failed to create notify relay pthread.");
+		return -1;
+	}
+	return 0;
+}
+
+static int
+unset_notify_relay(struct virtio_vdpa_device *dev)
+{
+	void *status;
+
+	if (dev->tid) {
+		pthread_cancel(dev->tid);
+		pthread_join(dev->tid, &status);
+	}
+	dev->tid = 0;
+
+	if (dev->epfd >= 0)
+		close(dev->epfd);
+	dev->epfd = -1;
+
+	return 0;
 }
 
 static int
@@ -460,6 +560,8 @@ virtio_vdpa_start(struct virtio_vdpa_device *dev)
 
 	vtpci_set_status(hw, VIRTIO_CONFIG_STATUS_DRIVER_OK);
 
+	setup_notify_relay(dev);
+
 	if (!dev->cvq)
 		return 0;
 
@@ -494,6 +596,8 @@ virtio_vdpa_stop(struct virtio_vdpa_device *dev)
 	uint16_t last_used_idx, last_avail_idx;
 
 	nr_vring = rte_vhost_get_vring_num(vid);
+
+	unset_notify_relay(dev);
 
 	vtpci_reset(hw);
 
