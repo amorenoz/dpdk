@@ -2003,6 +2003,16 @@ vhost_user_msg_handler(int vid, int fd)
 
 	}
 
+	did = dev->vdpa_dev_id;
+	vdpa_dev = rte_vdpa_get_device(did);
+
+	if (vdpa_dev &&  (dev->flags & VIRTIO_DEV_VDPA_CONFIGURED) &&
+			msg.request.master == VHOST_USER_SET_MEM_TABLE) {
+		if (vdpa_dev->ops->dev_close)
+			vdpa_dev->ops->dev_close(dev->vid);
+		dev->flags &= ~VIRTIO_DEV_VDPA_CONFIGURED;
+	}
+
 	handled = false;
 	if (dev->extern_ops.pre_msg_handle) {
 		ret = (*dev->extern_ops.pre_msg_handle)(dev->vid,
@@ -2109,8 +2119,6 @@ skip_to_post_handle:
 		}
 	}
 
-	did = dev->vdpa_dev_id;
-	vdpa_dev = rte_vdpa_get_device(did);
 	if (vdpa_dev && virtio_is_ready(dev) &&
 			!(dev->flags & VIRTIO_DEV_VDPA_CONFIGURED)) {
 		if (vdpa_dev->ops->dev_conf)
