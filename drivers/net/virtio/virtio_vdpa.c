@@ -789,6 +789,31 @@ virtio_vdpa_get_notify_area(int vid, int qid, uint64_t *offset, uint64_t *size)
 	return 0;
 }
 
+static int
+virtio_vdpa_set_vring_state(int vid, int vring, int state __rte_unused)
+{
+	int did;
+	struct internal_list *list;
+	struct virtio_vdpa_device *dev;
+	struct virtqueue *vq;
+	struct virtio_hw *hw;
+
+	did = rte_vhost_get_vdpa_device_id(vid);
+	list = find_internal_resource_by_did(did);
+	if (list == NULL) {
+		DRV_LOG(ERR, "Invalid device id: %d", did);
+		return -1;
+	}
+
+	dev = list->dev;
+	vq = &dev->vqs[vring];
+	hw = &dev->hw;
+
+	VTPCI_OPS(hw)->notify_queue(hw, vq);
+
+	return 0;
+}
+
 static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.get_queue_num = virtio_vdpa_get_queue_num,
 	.get_features = virtio_vdpa_get_features,
@@ -799,6 +824,7 @@ static struct rte_vdpa_dev_ops virtio_vdpa_ops = {
 	.get_vfio_group_fd = virtio_vdpa_get_vfio_group_fd,
 	.get_vfio_device_fd = virtio_vdpa_get_vfio_device_fd,
 	.get_notify_area = virtio_vdpa_get_notify_area,
+	.set_vring_state = virtio_vdpa_set_vring_state,
 };
 
 static inline int
