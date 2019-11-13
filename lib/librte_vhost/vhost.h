@@ -266,8 +266,8 @@ struct vring_packed_desc_event {
 				(1ULL << VIRTIO_NET_F_HOST_TSO6) | \
 				(1ULL << VIRTIO_NET_F_HOST_UFO) | \
 				(1ULL << VIRTIO_NET_F_HOST_ECN) | \
-				(1ULL << VIRTIO_NET_F_CSUM)    | \
-				(1ULL << VIRTIO_NET_F_GUEST_CSUM) | \
+				(0ULL << VIRTIO_NET_F_CSUM)    | \
+				(0ULL << VIRTIO_NET_F_GUEST_CSUM) | \
 				(1ULL << VIRTIO_NET_F_GUEST_TSO4) | \
 				(1ULL << VIRTIO_NET_F_GUEST_TSO6) | \
 				(1ULL << VIRTIO_NET_F_GUEST_UFO) | \
