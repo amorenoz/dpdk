@@ -1165,7 +1165,8 @@ ifcvf_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 		(1ULL << VIRTIO_NET_F_CTRL_VQ) |
 		(1ULL << VIRTIO_NET_F_STATUS) |
 		(1ULL << VHOST_USER_F_PROTOCOL_FEATURES) |
-		(1ULL << VHOST_F_LOG_ALL);
+		(1ULL << VHOST_F_LOG_ALL) |
+		(1ULL << VIRTIO_F_ORDER_PLATFORM);
 
 	internal->dev_addr.pci_addr = pci_dev->addr;
 	internal->dev_addr.type = PCI_ADDR;

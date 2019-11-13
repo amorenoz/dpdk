@@ -14,6 +14,7 @@
 
 #define IFCVF_MAX_QUEUES		1
 #define VIRTIO_F_IOMMU_PLATFORM		33
+#define VIRTIO_F_ORDER_PLATFORM		36
 
 /* Common configuration */
 #define IFCVF_PCI_CAP_COMMON_CFG	1
