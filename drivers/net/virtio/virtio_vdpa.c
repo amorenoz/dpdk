@@ -32,6 +32,7 @@ static const char * const virtio_vdpa_valid_arguments[] = {
 };
 
 static int virtio_vdpa_logtype;
+static uint32_t num_vdpa_devs;
 
 struct virtio_vdpa_device {
 	struct rte_vdpa_dev_addr dev_addr;
@@ -996,6 +997,8 @@ virtio_vdpa_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 	dev->max_queue_pairs = 1;
 	list->dev = dev;
 
+	dev->hw.port_id = num_vdpa_devs;
+
 	if (virtio_vdpa_is_alibaba(dev))
 		dev->hw.is_alibaba = true;
 
@@ -1015,6 +1018,8 @@ virtio_vdpa_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 	pthread_mutex_unlock(&internal_list_lock);
 
 	rte_kvargs_free(kvlist);
+
+	num_vdpa_devs++;
 
 	return 0;
 
