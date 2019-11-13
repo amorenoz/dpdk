@@ -703,6 +703,8 @@ rte_vhost_driver_get_features(const char *path, uint64_t *features)
 		goto unlock_exit;
 	}
 
+	vsocket->features |= (1ULL << VIRTIO_F_ORDER_PLATFORM);
+
 	if (vdpa_dev->ops->get_features(did, &vdpa_features) < 0) {
 		RTE_LOG(ERR, VHOST_CONFIG,
 				"failed to get vdpa features "
@@ -884,7 +886,8 @@ rte_vhost_driver_register(const char *path, uint64_t flags)
 	 * two values.
 	 */
 	vsocket->use_builtin_virtio_net = true;
-	vsocket->supported_features = VIRTIO_NET_SUPPORTED_FEATURES;
+	vsocket->supported_features = VIRTIO_NET_SUPPORTED_FEATURES |
+		(1ULL << VIRTIO_F_ORDER_PLATFORM);
 	vsocket->features           = VIRTIO_NET_SUPPORTED_FEATURES;
 	vsocket->protocol_features  = VHOST_USER_PROTOCOL_FEATURES;
 

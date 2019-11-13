@@ -251,6 +251,10 @@ struct vring_packed_desc_event {
 #define VIRTIO_F_IN_ORDER      35
 #endif
 
+#ifndef VIRTIO_F_ORDER_PLATFORM
+#define VIRTIO_F_ORDER_PLATFORM      36
+#endif
+
 /* Features supported by this builtin vhost-user net driver. */
 #define VIRTIO_NET_SUPPORTED_FEATURES ((1ULL << VIRTIO_NET_F_MRG_RXBUF) | \
 				(1ULL << VIRTIO_F_ANY_LAYOUT) | \
