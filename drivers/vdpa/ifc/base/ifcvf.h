@@ -159,4 +159,8 @@ ifcvf_get_notify_region(struct ifcvf_hw *hw);
 u64
 ifcvf_get_queue_notify_off(struct ifcvf_hw *hw, int qid);
 
+void
+ifcvf_queue_enable(struct ifcvf_hw *hw, u16 qid,  u16 enable);
+
+
 #endif /* _IFCVF_H_ */

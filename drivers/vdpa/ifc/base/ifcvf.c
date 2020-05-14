@@ -327,3 +327,12 @@ ifcvf_get_queue_notify_off(struct ifcvf_hw *hw, int qid)
 	return (u8 *)hw->notify_addr[qid] -
 		(u8 *)hw->mem_resource[hw->notify_region].addr;
 }
+
+void
+ifcvf_queue_enable(struct ifcvf_hw *hw, u16 qid,  u16 enable)
+{
+	struct ifcvf_pci_common_cfg *cfg = hw->common_cfg;
+
+	IFCVF_WRITE_REG16(qid, &cfg->queue_select);
+	IFCVF_WRITE_REG16(enable, &cfg->queue_enable);
+}
