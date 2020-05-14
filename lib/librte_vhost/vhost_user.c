@@ -2825,7 +2825,7 @@ skip_to_post_handle:
 	}
 
 
-	if (!(dev->flags & VIRTIO_DEV_RUNNING) && virtio_is_ready(dev)) {
+	if (!(dev->flags & VIRTIO_DEV_READY) && virtio_is_ready(dev)) {
 		dev->flags |= VIRTIO_DEV_READY;
 
 		if (!(dev->flags & VIRTIO_DEV_RUNNING)) {
