@@ -271,6 +271,7 @@ virtio_user_set_status(struct virtio_hw *hw, uint8_t status)
 	else if (status == VIRTIO_CONFIG_STATUS_RESET)
 		virtio_user_reset(hw);
 	dev->status = status;
+	virtio_user_update_status(dev, status);
 }
 
 static uint8_t
