@@ -52,6 +52,7 @@ uint32_t tx_ip_dst_addr = (198U << 24) | (18 << 16) | (0 << 8) | 2;
 
 static struct rte_ipv4_hdr pkt_ip_hdr; /**< IP header of transmitted packets. */
 RTE_DEFINE_PER_LCORE(uint8_t, _ip_var); /**< IP address variation */
+RTE_DEFINE_PER_LCORE(uint16_t, _port_var); /**< Port address variation */
 static struct rte_udp_hdr pkt_udp_hdr; /**< UDP header of tx packets. */
 
 static void
@@ -210,9 +211,30 @@ pkt_burst_prepare(struct rte_mbuf *pkt, struct rte_mempool *mbp,
 		ip_hdr->src_addr = rte_cpu_to_be_32(addr);
 		RTE_PER_LCORE(_ip_var) = ip_var;
 	}
+
 	copy_buf_to_pkt(&pkt_udp_hdr, sizeof(pkt_udp_hdr), pkt,
 			sizeof(struct rte_ether_hdr) +
 			sizeof(struct rte_ipv4_hdr));
+
+
+	if (txonly_multi_flow) {
+		/*
+		 * Also increasee the UDP port number
+		 * */
+
+		struct rte_udp_hdr *udp_hdr;
+		uint16_t port_var = RTE_PER_LCORE(_port_var);
+
+		udp_hdr = rte_pktmbuf_mtod_offset(pkt,
+				struct rte_udp_hdr *,
+				sizeof(struct rte_ether_hdr) +
+				sizeof(struct rte_ipv4_hdr));
+
+		port_var++;
+		port_var %= UINT16_MAX - tx_udp_dst_port -1;
+		udp_hdr->dst_port += port_var++;
+		RTE_PER_LCORE(_port_var) = port_var;
+	}
 	/*
 	 * Complete first mbuf of packet and append it to the
 	 * burst of packets to be transmitted.
