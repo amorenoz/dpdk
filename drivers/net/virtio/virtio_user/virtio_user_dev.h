@@ -43,7 +43,10 @@ struct virtio_user_dev {
 	uint64_t	protocol_features; /* negotiated protocol features
 					    * (Vhost-user only)
 					    */
-	uint8_t		status;
+
+	uint8_t		virtio_net_status; /* virtio-net device status */
+	uint8_t		status;		   /* virtio device status */
+
 	uint16_t	port_id;
 	uint8_t		mac_addr[RTE_ETHER_ADDR_LEN];
 	char		path[PATH_MAX];
