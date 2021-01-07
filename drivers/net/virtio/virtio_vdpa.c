@@ -1088,6 +1088,12 @@ static const struct rte_pci_id pci_id_virtio_vdpa_map[] = {
 	  .subsystem_vendor_id = VIRTIO_PCI_VENDORID,
 	  .subsystem_device_id = VIRTIO_PCI_SUBSY_DEVICEID_ALI,
 	},
+	{ .class_id = RTE_CLASS_ANY_ID,
+	  .vendor_id = VIRTIO_PCI_VENDORID,
+	  .device_id = VIRTIO_PCI_MODERN_DEVICEID_NET,
+	  .subsystem_vendor_id = VIRTIO_PCI_SUBSY_VENDORID_INTEL,
+	  .subsystem_device_id = VIRTIO_PCI_SUBSY_DEVICEID_N3000,
+	},
 	{ .vendor_id = 0, /* sentinel */
 	},
 };
