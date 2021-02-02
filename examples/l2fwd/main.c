@@ -501,6 +501,8 @@ l2fwd_parse_args(int argc, char **argv)
 				return -1;
 			}
 			break;
+		case 0:
+			break;
 
 		default:
 			l2fwd_usage(prgname);
